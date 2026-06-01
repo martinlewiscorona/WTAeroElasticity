@@ -1,35 +1,266 @@
-% this code is for the course: wind turbine aeroelasticity
-% Delft university of technology
+%% Wind Turbine Aeroelasticity
+%% TU Delft
 
 clc
-close all;
-clear all;
+clear
+close all
 
-%% load key parameters
-load 'STATE'
-v0=WindSpeeds;    % read wind speed array
-omega=RtSpeeds*2*pi/60;  %rotation angular velocity
-pitch=PitchAngles;   % pitch angle: collective pitch wind turbine
+%% LOAD OPERATING CONDITIONS
 
-%% loop: wind speed from 3m/s to 25m/s
-for i=1:length(v0)
-    % call BEM, outputs: Radius, Loads, and power outputs
-    [Rx,FN,FT,P(i)]=BEM(v0(i),omega(i),pitch(i));
-    
-    % plot FN and FT
-    figure(1)
-    plot(Rx,FN,'r-o');
-    hold on;
-    plot(Rx,FT,'b-o');
-    hold on
-    grid on
-    xlabel('Radius(m)');
-    ylabel('Loads(N)');
-    legend('Fn','Ft');
+load STATE
+
+v0    = WindSpeeds;
+omega = RtSpeeds*2*pi/60;
+pitch = PitchAngles;
+
+%% STRUCTURAL DATA
+
+r = [1.50, 1.70, 2.70, 3.70, 4.70, 5.70, 6.70, 7.70, 8.70, 9.70, ...
+     10.70, 11.70, 12.70, 13.70, 14.70, 15.70, 16.70, 17.70, ...
+     19.70, 21.70, 23.70, 25.70, 27.70, 29.70, 31.70, 33.70, ...
+     35.70, 37.70, 39.70, 41.70, 43.70, 45.70, 47.70, 49.70, ...
+     51.70, 53.70, 55.70, 56.70, 57.70, 58.70, 59.20, 59.70, ...
+     60.20, 60.70, 61.20, 61.70, 62.20, 62.70, 63.00];
+
+m = [678.935, 678.935, 773.363, 740.550, 740.042, 592.496, ...
+     450.275, 424.054, 400.638, 382.062, 399.655, 426.321, ...
+     416.820, 406.186, 381.420, 352.822, 349.477, 346.538, ...
+     339.333, 330.004, 321.990, 313.820, 294.734, 287.120, ...
+     263.343, 253.207, 241.666, 220.638, 200.293, 179.404, ...
+     165.094, 154.411, 138.935, 129.555, 107.264, 98.776, ...
+     90.248, 83.001, 72.906, 68.772, 66.264, 59.340, ...
+     55.914, 52.484, 49.114, 45.818, 41.669, 11.453, 10.319];
+
+EI_flap = [18110.00E6, 18110.00E6, 19424.90E6, 17455.90E6, ...
+           15287.40E6, 10782.40E6, 7229.72E6, 6309.54E6, ...
+           5528.36E6, 4980.06E6, 4936.84E6, 4691.66E6, ...
+           3949.46E6, 3386.52E6, 2933.74E6, 2568.96E6, ...
+           2388.65E6, 2271.99E6, 2050.05E6, 1828.25E6, ...
+           1588.71E6, 1361.93E6, 1102.38E6, 875.80E6, ...
+           681.30E6, 534.72E6, 408.90E6, 314.54E6, ...
+           238.63E6, 175.88E6, 126.01E6, 107.26E6, ...
+           90.88E6, 76.31E6, 61.05E6, 49.48E6, ...
+           39.36E6, 34.67E6, 30.41E6, 26.52E6, ...
+           23.84E6, 19.63E6, 16.00E6, 12.83E6, ...
+           10.08E6, 7.55E6, 4.60E6, 0.25E6, 0.17E6];
+
+EI_edge = [18113.60E6, 18113.60E6, 19558.60E6, 19497.80E6, ...
+           19788.80E6, 14858.50E6, 10220.60E6, 9144.70E6, ...
+           8063.16E6, 6884.44E6, 7009.18E6, 7167.68E6, ...
+           7271.66E6, 7081.70E6, 6244.53E6, 5048.96E6, ...
+           4948.49E6, 4808.02E6, 4501.40E6, 4244.07E6, ...
+           3995.28E6, 3750.76E6, 3447.14E6, 3139.07E6, ...
+           2734.24E6, 2554.87E6, 2334.03E6, 1828.73E6, ...
+           1584.10E6, 1323.36E6, 1183.68E6, 1020.16E6, ...
+           797.81E6, 709.61E6, 518.19E6, 454.87E6, ...
+           395.12E6, 353.72E6, 304.73E6, 281.42E6, ...
+           261.71E6, 158.81E6, 137.88E6, 118.79E6, ...
+           101.63E6, 85.07E6, 64.26E6, 6.61E6, 5.01E6];
+
+%% STRUCTURAL PARAMETERS
+
+R = max(r);
+zeta = 0.00477465;
+
+%% ==========================================================
+%% MASS MATRIX
+%% ==========================================================
+
+Mf = 0;
+Me = 0;
+
+for j = 1:length(r)-1
+
+    dr = r(j+1)-r(j);
+
+    x = r(j)/R;
+
+    phif = ...
+          0.0622*x^2 ...
+        + 1.7254*x^3 ...
+        - 3.2452*x^4 ...
+        + 4.7131*x^5 ...
+        - 2.2555*x^6;
+
+    phie = ...
+          0.3627*x^2 ...
+        + 2.5337*x^3 ...
+        - 3.5772*x^4 ...
+        + 2.3760*x^5 ...
+        - 0.6952*x^6;
+
+    Mf = Mf + m(j)*phif^2*dr;
+    Me = Me + m(j)*phie^2*dr;
+
 end
 
-%% plot power curve regarding wind speed
+M = [Mf 0;
+     0 Me];
+
+%% ==========================================================
+%% STIFFNESS MATRIX
+%% ==========================================================
+
+Kf = 0;
+Ke = 0;
+
+for j = 1:length(r)-1
+
+    dr = r(j+1)-r(j);
+
+    x = r(j)/R;
+
+    d2phif = ...
+       (2*0.0622 ...
+      +6*1.7254*x ...
+      -12*3.2452*x^2 ...
+      +20*4.7131*x^3 ...
+      -30*2.2555*x^4)/R^2;
+
+    d2phie = ...
+       (2*0.3627 ...
+      +6*2.5337*x ...
+      -12*3.5772*x^2 ...
+      +20*2.3760*x^3 ...
+      -30*0.6952*x^4)/R^2;
+
+    Kf = Kf + EI_flap(j)*d2phif^2*dr;
+    Ke = Ke + EI_edge(j)*d2phie^2*dr;
+
+end
+
+K = [Kf 0;
+     0 Ke];
+
+%% ==========================================================
+%% DAMPING MATRIX
+%% ==========================================================
+
+Cff = 2*zeta*sqrt(K(1,1)*M(1,1));
+Cee = 2*zeta*sqrt(K(2,2)*M(2,2));
+
+C = [Cff 0;
+     0 Cee];
+
+%% ==========================================================
+%% NATURAL FREQUENCIES
+%% ==========================================================
+
+omega_flap = sqrt(K(1,1)/M(1,1));
+omega_edge = sqrt(K(2,2)/M(2,2));
+
+f_flap = omega_flap/(2*pi);
+f_edge = omega_edge/(2*pi);
+
+fprintf('\nFlap frequency = %.3f Hz\n',f_flap);
+fprintf('Edge frequency = %.3f Hz\n',f_edge);
+
+%% STORAGE
+
+Qf = zeros(length(v0),1);
+Qe = zeros(length(v0),1);
+P  = zeros(length(v0),1);
+
+%% ==========================================================
+%% LOOP OVER OPERATING POINTS
+%% ==========================================================
+
+for i = 1:length(v0)
+
+    [Rx,FN,FT,P(i)] = BEM(v0(i),omega(i),pitch(i));
+
+    %% LOAD DISTRIBUTIONS
+
+    figure(1)
+    plot(Rx,FN,'r-o')
+    hold on
+    plot(Rx,FT,'b-o')
+    grid on
+
+    xlabel('Radius (m)')
+    ylabel('Load (N/m)')
+    legend('Fn','Ft')
+
+    %% GENERALIZED FORCES
+
+    FN_interp = interp1(Rx,FN,r,'linear','extrap');
+    FT_interp = interp1(Rx,FT,r,'linear','extrap');
+
+    for j = 1:length(r)-1
+
+        dr = r(j+1)-r(j);
+
+        x = r(j)/R;
+
+        phif = ...
+              0.0622*x^2 ...
+            + 1.7254*x^3 ...
+            - 3.2452*x^4 ...
+            + 4.7131*x^5 ...
+            - 2.2555*x^6;
+
+        phie = ...
+              0.3627*x^2 ...
+            + 2.5337*x^3 ...
+            - 3.5772*x^4 ...
+            + 2.3760*x^5 ...
+            - 0.6952*x^6;
+
+        Qf(i) = Qf(i) + FN_interp(j)*phif*dr;
+        Qe(i) = Qe(i) + FT_interp(j)*phie*dr;
+
+    end
+
+end
+
+%% ==========================================================
+%% POWER CURVE
+%% ==========================================================
+
 figure(2)
-plot(v0,P,'b-o','linewidth',1.5);
-xlabel('Wind speed(m/s)');
-ylabel('Power(W)');
+
+plot(v0,P,'bo-','LineWidth',1.5)
+
+xlabel('Wind Speed (m/s)')
+ylabel('Power (W)')
+title('Power Curve')
+grid on
+
+%% ==========================================================
+%% GENERALIZED FORCES
+%% ==========================================================
+
+figure(3)
+
+plot(v0,Qf,'r-o','LineWidth',1.5)
+hold on
+
+plot(v0,Qe,'b-o','LineWidth',1.5)
+
+xlabel('Wind Speed (m/s)')
+ylabel('Generalized Force')
+title('Modal Generalized Loads')
+
+legend('Flapwise','Edgewise')
+grid on
+
+%% ==========================================================
+%% STATIC MODAL DISPLACEMENTS
+%% ==========================================================
+
+eta_flap = Qf./K(1,1);
+eta_edge = Qe./K(2,2);
+
+figure(4)
+
+plot(v0,eta_flap,'r-o','LineWidth',1.5)
+hold on
+
+plot(v0,eta_edge,'b-o','LineWidth',1.5)
+
+xlabel('Wind Speed (m/s)')
+ylabel('Modal Coordinate (m)')
+title('Static Modal Response')
+
+legend('Flapwise','Edgewise')
+grid on
