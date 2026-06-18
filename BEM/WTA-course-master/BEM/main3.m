@@ -71,43 +71,7 @@ twist_r = interp1(R_aero, Twist_aero, r, 'linear', 'extrap');
 R = max(r);
 zeta = 0.00477465;
 
-%% FUNCTION DEFINITION
 
-function [phif] = phif(x)
-         phif = ...
-              0.0622*x^2 ...
-            + 1.7254*x^3 ...
-            - 3.2452*x^4 ...
-            + 4.7131*x^5 ...
-            - 2.2555*x^6;
-end
-
-function [phie] = phie(x)
-        phie = ...
-              0.3627*x^2 ...
-            + 2.5337*x^3 ...
-            - 3.5772*x^4 ...
-            + 2.3760*x^5 ...
-            - 0.6952*x^6;
-end
-
-function [d2phif] = d2phif(x, R)
-    d2phif = ...
-       (2*0.0622 ...
-      +6*1.7254*x ...
-      -12*3.2452*x^2 ...
-      +20*4.7131*x^3 ...
-      -30*2.2555*x^4)/R^2;
-end
-
-function [d2phie] = d2phie(x, R)
-    d2phie = ...
-       (2*0.3627 ...
-      +6*2.5337*x ...
-      -12*3.5772*x^2 ...
-      +20*2.3760*x^3 ...
-      -30*0.6952*x^4)/R^2;
-end
 
 %% ==========================================================
 %% MASS MATRIX
@@ -533,25 +497,42 @@ tip_edge_t5 = x_edge_t5 * phie(1);
 mom_flap_t5 = EI_flap(1) * x_flap_t5 * d2phif(0, R);
 mom_edge_t5 = EI_edge(1) * x_edge_t5 * d2phie(0, R);
 
-%% --- FIGURE 5: COMPARISON (DEACTIVATED VS ACTIVATED) ---
-figure('Name', 'Task 5: Aerodynamic Damping Comparison', 'NumberTitle', 'off');
+%% --- FIGURE 5: COMPARISON (DEACTIVATED VS ACTIVATED) - SEPARATED MODES ---
+% Create a larger figure to accommodate a 2x2 layout
+figure('Name', 'Task 5: Aerodynamic Damping Comparison', 'NumberTitle', 'off', 'Position', [100, 100, 1200, 700]);
 
-% Top Subplot: Flapwise Tip Deflection Comparison
-subplot(2,1,1);
+% 1. Top-Left: Flapwise Tip Deflection
+subplot(2,2,1);
 plot(t_per, tip_flap_per, 'r--', 'LineWidth', 1.5); hold on; % Task 4 (Deactivated)
 plot(t_t5, tip_flap_t5, 'b-', 'LineWidth', 1.5);             % Task 5 (Activated)
-xlabel('Time (s)'); ylabel('Flapwise Deflection (m)');
-title('Flapwise Tip Deflection: Effect of Blade Velocity');
+xlabel('Time (s)'); ylabel('Deflection (m)');
+title('Flapwise Tip Deflection');
 legend('Deactivated (Task 4)', 'Activated (Task 5)', 'Location', 'best');
 grid on;
 
-% Bottom Subplot: Flapwise Root Bending Moment Comparison
-subplot(2,1,2);
-plot(t_per, mom_flap_per/1e6, 'r--', 'LineWidth', 1.5); hold on; % Task 4
-plot(t_t5, mom_flap_t5/1e6, 'b-', 'LineWidth', 1.5);             % Task 5
-xlabel('Time (s)'); ylabel('Flapwise Root Moment (MNm)');
-title('Root Bending Moment: Effect of Blade Velocity');
+% 2. Top-Right: Edgewise Tip Deflection
+subplot(2,2,2);
+plot(t_per, tip_edge_per, 'r--', 'LineWidth', 1.5); hold on; 
+plot(t_t5, tip_edge_t5, 'b-', 'LineWidth', 1.5);             
+xlabel('Time (s)'); ylabel('Deflection (m)');
+title('Edgewise Tip Deflection');
 legend('Deactivated (Task 4)', 'Activated (Task 5)', 'Location', 'best');
+grid on;
+
+% 3. Bottom-Left: Flapwise Root Bending Moment
+subplot(2,2,3);
+plot(t_per, mom_flap_per/1e6, 'r--', 'LineWidth', 1.5); hold on; 
+plot(t_t5, mom_flap_t5/1e6, 'b-', 'LineWidth', 1.5);             
+xlabel('Time (s)'); ylabel('Moment (MNm)');
+title('Flapwise Root Bending Moment');
+grid on;
+
+% 4. Bottom-Right: Edgewise Root Bending Moment
+subplot(2,2,4);
+plot(t_per, mom_edge_per/1e6, 'r--', 'LineWidth', 1.5); hold on; 
+plot(t_t5, mom_edge_t5/1e6, 'b-', 'LineWidth', 1.5);             
+xlabel('Time (s)'); ylabel('Moment (MNm)');
+title('Edgewise Root Bending Moment');
 grid on;
 
 %% ==========================================================
@@ -636,8 +617,110 @@ legend('Without Geo Stiffening', 'With Geo Stiffening', 'Location', 'best');
 grid on;
 
 %% ==========================================================
+%% TASK 7: UNSTEADY LOADS (DYNAMIC INFLOW) - OPTION 1
+%% ==========================================================
+
+fprintf('Simulating Task 7 (Dynamic Inflow on Rotor Thrust)...\n');
+
+v0_t7 = 15;        % Wind speed (m/s)
+omega_t7 = 1.267;  % Rotor speed (rad/s)
+f_pitch = [0.05, 0.2, 0.5]; % Frequencies (Hz)
+
+% Time vector (simulate 60 seconds with a small time step for ODE accuracy)
+dt = 0.05;
+t_t7 = 0:dt:60; 
+
+% Pre-allocate storage for Thrust
+Thrust_QS = zeros(length(f_pitch), length(t_t7)); % Quasi-Steady (Without model)
+Thrust_DI = zeros(length(f_pitch), length(t_t7)); % Dynamic Inflow (With model)
+
+figure('Name', 'Task 7: Unsteady Rotor Loads', 'NumberTitle', 'off', 'Position', [100, 100, 1000, 800]);
+
+for k = 1:length(f_pitch)
+    f = f_pitch(k);
+    
+    % Harmonic collective pitch
+    pitch_t7 = 10.45 + 5 * sin(2 * pi * f * t_t7);
+    
+    % Initialize induction factors for the Dynamic Inflow time-marching
+    a_dyn_prev = zeros(17, 1); % 17 aerodynamic nodes
+    
+    for i = 1:length(t_t7)
+        current_pitch = pitch_t7(i);
+        
+        % 1. Quasi-Steady Thrust (Standard BEM - Instantaneous)
+        % Note: We capture Rx_aero to integrate over the correct aerodynamic grid
+        [Rx_aero, FN_qs, ~, ~] = BEM(v0_t7, omega_t7, current_pitch);
+        
+        % Integrate normal force along the 3 blades to get Rotor Thrust
+        T_qs = 0;
+        for j = 1:length(Rx_aero)-1
+            T_qs = T_qs + FN_qs(j) * (Rx_aero(j+1) - Rx_aero(j));
+        end
+        Thrust_QS(k, i) = T_qs * 3; % 3 blades
+        
+        % 2. Dynamic Inflow Thrust (Time-filtered Induction)
+        [~, FN_di, ~, ~, a_dyn_new] = BEM_dynamic(v0_t7, omega_t7, current_pitch, dt, a_dyn_prev);
+        
+        T_di = 0;
+        for j = 1:length(Rx_aero)-1
+            T_di = T_di + FN_di(j) * (Rx_aero(j+1) - Rx_aero(j));
+        end
+        Thrust_DI(k, i) = T_di * 3; 
+        
+        % Update induction state for the next time step
+        a_dyn_prev = a_dyn_new;
+    end
+    
+    % Plotting results for this frequency
+    subplot(3, 1, k);
+    plot(t_t7, Thrust_QS(k, :)/1000, 'r--', 'LineWidth', 1.5); hold on;
+    plot(t_t7, Thrust_DI(k, :)/1000, 'b-', 'LineWidth', 1.5);
+    xlabel('Time (s)'); ylabel('Rotor Thrust (kN)');
+    title(sprintf('Rotor Thrust Response at Pitch Frequency f = %.2f Hz', f));
+    legend('Quasi-Steady (No Dynamic Inflow)', 'Unsteady (With Dynamic Inflow)', 'Location', 'best');
+    grid on;
+end
+
+%% ==========================================================
 %% HELPER FUNCTIONS
 %% ==========================================================
+
+function [phif] = phif(x)
+         phif = ...
+              0.0622*x^2 ...
+            + 1.7254*x^3 ...
+            - 3.2452*x^4 ...
+            + 4.7131*x^5 ...
+            - 2.2555*x^6;
+end
+
+function [phie] = phie(x)
+        phie = ...
+              0.3627*x^2 ...
+            + 2.5337*x^3 ...
+            - 3.5772*x^4 ...
+            + 2.3760*x^5 ...
+            - 0.6952*x^6;
+end
+
+function [d2phif] = d2phif(x, R)
+    d2phif = ...
+       (2*0.0622 ...
+      +6*1.7254*x ...
+      -12*3.2452*x^2 ...
+      +20*4.7131*x^3 ...
+      -30*2.2555*x^4)/R^2;
+end
+
+function [d2phie] = d2phie(x, R)
+    d2phie = ...
+       (2*0.3627 ...
+      +6*2.5337*x ...
+      -12*3.5772*x^2 ...
+      +20*2.3760*x^3 ...
+      -30*0.6952*x^4)/R^2;
+end
 
 function dXdt = aeroelastic_ode(t, X, M, C, K, F)
     % State-space formulation for 2-DOF Structural System
